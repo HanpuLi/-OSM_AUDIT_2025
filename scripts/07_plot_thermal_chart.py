@@ -86,7 +86,7 @@ def render_thermodynamic_chart(csv_path, output_image_path):
 
     # 绘图
     plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(14, 7), dpi=300)
+    fig, ax = plt.subplots(figsize=(14, 8), dpi=400)
     
     ax.scatter(df.index, df['LST_Celsius'], color='#888888', alpha=0.4, s=15, 
                label='Raw LST Observations (Cloud-masked)')
@@ -95,7 +95,7 @@ def render_thermodynamic_chart(csv_path, output_image_path):
             
     # Uncertainty Quantification (UQ) Error Band (± 1 StdDev)
     ax.fill_between(df_daily.index, df_daily['LST_Lower'], df_daily['LST_Upper'],
-                    color='#FF8C00', alpha=0.15, label='Spatial Thermal Variance ($\pm 1\sigma$ UQ)', linewidth=0)
+                    color='#FF8C00', alpha=0.15, label=r'Spatial Thermal Variance ($\pm 1\sigma$ UQ)', linewidth=0)
             
     # 新增：合并了净增温和统计显著性的统一趋势线
     ax.plot(df.index, y_pred, color='#FF0000', linestyle='--', linewidth=3, 
@@ -104,15 +104,15 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     ax.fill_between(df.index, y_ci_lower, y_ci_upper, color='#FFCC00', alpha=0.2, label='95% Confidence Interval (LinReg)')
 
     ax.set_title('Thermodynamic Spatial Audit: Algorithmic Metabolism in the Sprawl Zone (2015-2023)', 
-                 fontsize=18, fontweight='bold', color='white', pad=20, fontfamily='monospace')
-    ax.set_ylabel('Land Surface Temperature (°C)', fontsize=14, fontweight='bold', color='#CCCCCC')
-    ax.set_xlabel('Temporal Axis (Years)', fontsize=14, fontweight='bold', color='#CCCCCC')
+                 fontsize=18, fontweight='bold', fontname='Courier New', color='white', pad=25)
+    ax.set_ylabel('Land Surface Temperature (°C)', fontsize=14, fontname='Courier New', color='#CCCCCC')
+    ax.set_xlabel('Temporal Axis (Years)', fontsize=14, fontname='Courier New', color='#CCCCCC')
     
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.tick_params(axis='both', which='major', labelsize=12, colors='#AAAAAA')
-    ax.grid(True, color='#333333', linestyle=':', linewidth=1)
-    ax.legend(loc='upper left', fontsize=12, frameon=True, facecolor='#111111', edgecolor='#444444')
+    ax.grid(True, color='#333333', linestyle='--', linewidth=0.8, alpha=0.5)
+    ax.legend(loc='upper left', frameon=False, prop={'family': 'Courier New', 'size': 11})
 
     # 添加数据源署名
     fig.text(0.98, 0.02, 'Data: USGS Landsat 8 (TIRS) | Projection: EPSG:27700 | Author: H. Li', 
