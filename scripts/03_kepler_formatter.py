@@ -38,16 +38,23 @@ def extract_features_for_kepler(file_path, sector_name):
         if not geom:
             continue
 
-        if 'power' in props and geom['type'] == 'Point':
-            lon, lat = geom['coordinates']
-            features_list.append({
-                'sector': sector_name,
-                'audit_type': 'Energy_Displacement',
-                'category': props.get('power', 'infrastructure'),
-                'latitude': lat,
-                'longitude': lon,
-                'intensity': 50.0
-            })
+        if 'power' in props:
+            lon, lat = None, None
+            if geom['type'] == 'Point':
+                lon, lat = geom['coordinates']
+            elif geom['type'] in ['Polygon', 'MultiPolygon']:
+                s = shape(geom)
+                lon, lat = s.centroid.x, s.centroid.y
+                
+            if lon is not None and lat is not None:
+                features_list.append({
+                    'sector': sector_name,
+                    'audit_type': 'Energy_Displacement',
+                    'category': props.get('power', 'infrastructure'),
+                    'latitude': lat,
+                    'longitude': lon,
+                    'intensity': 50.0
+                })
 
         if props.get('amenity') == 'parking' and geom['type'] in ['Polygon', 'MultiPolygon']:
             s = shape(geom)

@@ -35,7 +35,7 @@ def run_spatial_audit(file_path):
             return 0.0, 0
 
     # 记录数据提取元信息
-    timestamp = data.get('osm3s', {}).get('timestamp_osm_base', 'unknown')
+    timestamp = data.get('timestamp') or data.get('osm3s', {}).get('timestamp_osm_base', 'unknown')
     logger.info("OSM data timestamp: %s | File: %s", timestamp, os.path.basename(file_path))
 
     parking_area = 0.0

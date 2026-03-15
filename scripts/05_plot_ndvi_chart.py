@@ -88,7 +88,7 @@ def plot_ndvi_collapse(csv_path, output_path):
             
     # Uncertainty Quantification (UQ) Error Band (± 1 StdDev)
     ax.fill_between(df_daily.index, df_daily['Sprawl_Lower'], df_daily['Sprawl_Upper'],
-                    color='#FF3333', alpha=0.15, label='Spatial Variance ($\pm 1\sigma$ UQ)', linewidth=0)
+                    color='#FF3333', alpha=0.15, label=r'Spatial Variance ($\pm 1\sigma$ UQ)', linewidth=0)
             
     # 新增 Control Zone 绿带对照线
     ax.plot(df_daily.index, df_daily['Control_SG'], color='#33CC33', linewidth=3, linestyle='-.',
