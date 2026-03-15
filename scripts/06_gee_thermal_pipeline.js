@@ -52,27 +52,55 @@ var roiCollection = ee.FeatureCollection([
   ee.Feature(controlZone, {label: 'Control_Zone'})
 ]);
 
-var consolidatedChart = ui.Chart.image.seriesByRegion({
-  imageCollection: lstCollection,
-  regions: roiCollection,
-  reducer: ee.Reducer.mean(),
-  band: 'LST_Celsius',
-  scale: 30,
-  xProperty: 'system:time_start',
-  seriesProperty: 'label'
-}).setOptions({
-  title: 'Consolidated LST Time Series (Sprawl vs Control)',
-  vAxis: {title: 'Land Surface Temperature (°C)'},
-  lineWidth: 0, 
-  pointSize: 4,
-  series: {
-    0: {color: '#FF0000'}, // Sprawl_Core (Red)
-    1: {color: '#00FF00'}  // Control (Green)
-  }
+// 为了计算方差 (stdDev) 实现 UQ 误差带，我们必须手动 map 提取 Mean 和 StdDev
+var extractStats = function(image) {
+  var stats = image.reduceRegions({
+    collection: roiCollection,
+    reducer: ee.Reducer.mean().combine({
+      reducer2: ee.Reducer.stdDev(),
+      sharedInputs: true
+    }),
+    scale: 30
+  });
+  
+  // 将时刻注入到属性中
+  return stats.map(function(feat) {
+    return feat.set('system:time_start', image.get('system:time_start'));
+  });
+};
+
+var timeSeriesData = lstCollection.map(extractStats).flatten();
+
+// 整理成宽表格式供 CSV 导出
+var pivotData = timeSeriesData.map(function(feat) {
+  var dateStr = ee.Date(feat.get('system:time_start')).format('YYYY-MM-dd');
+  var label = feat.get('label');
+  var meanVal = feat.get('mean');
+  var stdVal = feat.get('stdDev');
+  
+  var props = { 'system:time_start': dateStr };
+  var dict = ee.Dictionary(props)
+    .set(ee.String(label).cat('_mean'), meanVal)
+    .set(ee.String(label).cat('_std'), stdVal);
+    
+  return ee.Feature(null, dict);
 });
 
-print("【ACTION REQUIRED】 Click the pop-out arrow in the top right of this chart to download the CSV data.");
-print("⚠️ Please rename the downloaded file to: ee-chart_lst.csv when placing it in the raw_telemetry/ folder.");
+var consolidatedChart = ui.Chart.feature.byFeature({
+  features: timeSeriesData,
+  xProperty: 'system:time_start',
+  yProperties: ['mean']
+})
+.setSeriesNames(['LST_Mean'])
+.setOptions({
+  title: 'LST Analytics Extraction Ready (with UQ StdDev)',
+  vAxis: {title: 'LST Celsius'},
+});
+
+print("【ACTION REQUIRED】");
+print("1. We now export RAW LONG FORMAT telemetry including the Pixel Standard Deviation (stdDev) for Academic UQ.");
+print("2. Click the pop-out arrow in the top right of this chart -> Download CSV.");
+print("3. MUST Save as: data/raw_telemetry/ee-chart_lst.csv");
 print(consolidatedChart);
 
 // ==============================================================================

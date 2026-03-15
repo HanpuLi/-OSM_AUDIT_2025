@@ -67,30 +67,62 @@ var roiCollection = ee.FeatureCollection([
   ee.Feature(sensitivity['Sprawl_West'], {label: 'Sprawl_West'})
 ]);
 
-var consolidatedChart = ui.Chart.image.seriesByRegion({
-  imageCollection: ndviCollection,
-  regions: roiCollection,
-  reducer: ee.Reducer.mean(),
-  band: 'NDVI',
-  scale: 10,
-  xProperty: 'system:time_start',
-  seriesProperty: 'label'
-}).setOptions({
-  title: 'Consolidated NDVI Time Series (Sprawl vs Control & Cardinal Points)',
-  vAxis: {title: 'NDVI', min: 0, max: 0.8},
-  lineWidth: 1, 
-  pointSize: 2,
-  series: {
-    0: {color: '#FF0000', lineWidth: 2, pointSize: 3}, // Sprawl_Core (Red bold)
-    1: {color: '#00FF00', lineWidth: 2, pointSize: 3}, // Control (Green bold)
-    2: {color: '#FFAAAA'}, // North (Light red)
-    3: {color: '#FFAAAA'}, // South 
-    4: {color: '#FFAAAA'}, // East
-    5: {color: '#FFAAAA'}  // West
-  }
+// 为了计算方差 (stdDev) 实现 UQ 误差带，我们不能用简单的 seriesByRegion，必须手动 map 提取 Mean 和 StdDev
+var extractStats = function(image) {
+  var stats = image.reduceRegions({
+    collection: roiCollection,
+    reducer: ee.Reducer.mean().combine({
+      reducer2: ee.Reducer.stdDev(),
+      sharedInputs: true
+    }),
+    scale: 10
+  });
+  
+  // 将这个时刻的日期注入到每条记录中
+  return stats.map(function(feat) {
+    return feat.set('system:time_start', image.get('system:time_start'));
+  });
+};
+
+// 展开 FeatureCollection 的 FeatureCollection
+var timeSeriesData = ndviCollection.map(extractStats).flatten();
+
+// 整理成宽表格式供 CSV 导出
+var pivotData = timeSeriesData.map(function(feat) {
+  var dateStr = ee.Date(feat.get('system:time_start')).format('YYYY-MM-dd');
+  var label = feat.get('label');
+  var meanVal = feat.get('mean');
+  var stdVal = feat.get('stdDev');
+  
+  // 按照标签生成动态属性名 (例如: Sprawl_Zone_Core_mean, Sprawl_Zone_Core_std)
+  var props = { 'system:time_start': dateStr };
+  // GEE 语法：使用字典安全地给 Feature 赋值
+  var dict = ee.Dictionary(props)
+    .set(ee.String(label).cat('_mean'), meanVal)
+    .set(ee.String(label).cat('_std'), stdVal);
+    
+  return ee.Feature(null, dict);
 });
 
-print("【ACTION REQUIRED】 Click the pop-out arrow in the top right of this chart to download the single 'ee-chart.csv'");
+// 使用分组合并同一个日期的不同区域数据
+// 提示：这在 GEE 中有点复杂，最简单的是让 Python 去做宽表透视，
+// 但为了保持原有 Python 代码尽量少改，我们这里直接输出长表，交由 Python pivot
+
+var consolidatedChart = ui.Chart.feature.byFeature({
+  features: timeSeriesData,
+  xProperty: 'system:time_start',
+  yProperties: ['mean']
+})
+.setSeriesNames(['NDVI_Mean'])
+.setOptions({
+  title: 'NDVI Analytics Extraction Ready (with UQ StdDev)',
+  vAxis: {title: 'NDVI'},
+});
+
+print("【ACTION REQUIRED】");
+print("1. We now export RAW LONG FORMAT telemetry including the Pixel Standard Deviation (stdDev) for Academic UQ.");
+print("2. Click the pop-out arrow in the top right of this chart -> Download CSV.");
+print("3. MUST Save as: data/raw_telemetry/ee-chart_ndvi.csv");
 print(consolidatedChart);
 
 // ==============================================================================

@@ -25,19 +25,20 @@ def render_thermodynamic_chart(csv_path, output_image_path):
         print(f"[ERROR] Cannot find {csv_path}")
         return
 
-    if 'Sprawl_Zone_Core' not in df.columns:
-        print("[ERROR] CSV format invalid. Cannot find 'Sprawl_Zone_Core' column. Did you run the latest GEE LST script?")
+    if 'Sprawl_Zone_Core_mean' not in df.columns or 'Sprawl_Zone_Core_std' not in df.columns:
+        print("[ERROR] CSV missing '_mean' or '_std' columns. Did you update the GEE LST script for UQ?")
         return
 
-    # 提取 Sprawl Core 进行分析
-    df_sprawl = df[['system:time_start', 'Sprawl_Zone_Core']].copy()
-    df_sprawl.rename(columns={'Sprawl_Zone_Core': 'LST_Celsius'}, inplace=True)
+    # 提取 Sprawl Core 进行分析 (包含 Mean 和 StdDev)
+    df_sprawl = df[['system:time_start', 'Sprawl_Zone_Core_mean', 'Sprawl_Zone_Core_std']].copy()
+    df_sprawl.rename(columns={'Sprawl_Zone_Core_mean': 'LST_Celsius', 'Sprawl_Zone_Core_std': 'LST_Std'}, inplace=True)
     df_sprawl = df_sprawl.dropna(subset=['LST_Celsius'])
     df_sprawl['system:time_start'] = pd.to_datetime(df_sprawl['system:time_start'])
     df_sprawl = df_sprawl.sort_values('system:time_start').set_index('system:time_start')
     
-    # 提取 Control Zone (可选，目前不在同一个图里画)
-    df_control = df[['system:time_start', 'Control_Zone']].copy()
+    # 提取 Control Zone (可选)
+    if 'Control_Zone_mean' in df.columns:
+        df_control = df[['system:time_start', 'Control_Zone_mean', 'Control_Zone_std']].copy()
 
     print(f"Data points: {len(df_sprawl)}")
     
@@ -48,10 +49,16 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     # 数据预处理与平滑 (Savitzky-Golay)
     # ---------------------------------------------------------
     # 线性插值填补云遮挡导致的缺失值
-    df_daily = df[['LST_Celsius']].resample('D').mean().interpolate(method='time').dropna()
+    # 线性插值填补云遮挡导致的缺失值 (同时插值均值和方差)
+    df_daily = df[['LST_Celsius', 'LST_Std']].resample('D').mean().interpolate(method='time').dropna()
     
     # Savitzky-Golay 滤波 (365天窗口，3阶多项式，保留季节性极值)
     df_daily['LST_SG'] = savgol_filter(df_daily['LST_Celsius'], window_length=365, polyorder=3)
+    
+    # 平滑化空间方差包络带 (UQ)
+    df_daily['LST_Std_SG'] = df_daily['LST_Std'].rolling('180D', min_periods=30, center=True).mean().bfill().ffill()
+    df_daily['LST_Upper'] = df_daily['LST_SG'] + df_daily['LST_Std_SG']
+    df_daily['LST_Lower'] = df_daily['LST_SG'] - df_daily['LST_Std_SG']
 
     # ---------------------------------------------------------
     # 线性回归与 95% 置信区间 (95% CI)
@@ -86,11 +93,15 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     ax.plot(df_daily.index, df_daily['LST_SG'], color='#FF8C00', linewidth=2.5, alpha=0.9, 
             label='Savitzky-Golay Filtered (Seasonal Noise Removed)')
             
+    # Uncertainty Quantification (UQ) Error Band (± 1 StdDev)
+    ax.fill_between(df_daily.index, df_daily['LST_Lower'], df_daily['LST_Upper'],
+                    color='#FF8C00', alpha=0.15, label='Spatial Thermal Variance ($\pm 1\sigma$ UQ)', linewidth=0)
+            
     # 新增：合并了净增温和统计显著性的统一趋势线
     ax.plot(df.index, y_pred, color='#FF0000', linestyle='--', linewidth=3, 
             label=f'Structural Trendline (Net Δ: +{net_increase:.2f}°C, p = {p_value:.3e})')
             
-    ax.fill_between(df.index, y_ci_lower, y_ci_upper, color='#FFCC00', alpha=0.2, label='95% Confidence Interval')
+    ax.fill_between(df.index, y_ci_lower, y_ci_upper, color='#FFCC00', alpha=0.2, label='95% Confidence Interval (LinReg)')
 
     ax.set_title('Thermodynamic Spatial Audit: Algorithmic Metabolism in the Sprawl Zone (2015-2023)', 
                  fontsize=18, fontweight='bold', color='white', pad=20, fontfamily='monospace')
