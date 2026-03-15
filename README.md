@@ -52,7 +52,7 @@ To ensure scientific rigor, this project employs a triangulated approach combini
   - **Logic**: Interfaces with the USGS Landsat 8 (TIRS) thermal sensor. 
   - **Algorithm Highlight**: Performs deep bitwise QA_PIXEL masking (filtering dilated clouds, cirrus, and snow) and converts raw Digital Numbers (DN) to Land Surface Temperature (LST). Explicitly extracts pixel-level spatial standard deviation to power downstream UQ, alongside calculating robust Urban Heat Island (UHI) anomaly composites by averaging 3 entire summers (2016-2018 vs. 2023-2025).
 - **`07_plot_thermal_chart.py`** (Python): 
-  - **Algorithm Highlight**: Mirrors the NDVI pipeline's rigorous statistical architecture. Utilizes **Difference-in-Differences (DiD)** against the Control Zone greenbelt to isolate anthropogenic thermal forcing from regional climate drift. Applies a **Seasonal Mann-Kendall test** (`pymannkendall`, `period=365`) on the $\Delta$ LST signal to verify significance. A Savitzky-Golay filter (`window=181 days`, tuned for Landsat 8's sparser 16-day revisit cadence) smooths the seasonal sinusoidal oscillation while preserving amplitude. Renders a $\pm 1 \sigma$ Spatial Variance UQ error band.
+  - **Algorithm Highlight**: Deploys **STL (Seasonal-Trend decomposition using LOESS)** (`statsmodels.tsa.seasonal.STL`, `period=365`) to mathematically decompose the LST signal into independent Seasonal, Trend, and Residual components—a methodology superior to polynomial smoothing (Savitzky-Golay) as it precisely *subtracts* rather than *blurs* the annual thermal cycle. Extracts the deseasonalized trend for both the Sprawl and Control Zones, then computes a **Difference-in-Differences (DiD)** on the pure trend signals ($\Delta$ Trend = Sprawl\_Trend − Control\_Trend). A **Mann-Kendall test** on this deseasonalized DiD signal isolates the anthropogenic thermal forcing with high statistical power. Renders a $\pm 1 \sigma$ Spatial Variance UQ error band on the trend component.
 
 ### Inter-Pipeline Automation (`run_pipeline.sh`)
 While the Google Earth Engine scripts (`04`, `06`) must be executed natively in the GEE cloud to leverage Google's server-side computation (downloading terabytes of raw satellite imagery locally is computationally unfeasible), the entire local analytical workflow is fully automated.
@@ -72,7 +72,7 @@ The execution of this pipeline yielded the following statistically verified metr
 - **Logistical Sprawl:** A total land conversion of 13.21 hectares (132,123.11 SQM) of the Green Belt into impermeable asphalt parking surfaces (distinct from the 16.4 ha of building floorspace reported in the EIA).
 - **Energy Parasitism:** The identification of 17 new high-capacity grid nodes for virtual rendering and HVAC maintenance.
 - **Biophysical Erasure (NDVI):** A permanent structural collapse from a baseline NDVI of ~0.635 to ~0.28, isolated via **DiD**. The devastation trend is definitively verified by **Seasonal Mann-Kendall** testing (p < 0.001, statistically significant at 99.9% confidence). The adjacent Control Zone greenbelt remained completely stable over the 8-year continuum.
-- **Thermodynamic Escalation (LST):** A net structural increase in Land Surface Temperature of +3°C in the Sprawl Zone, isolated via **DiD** against the Control Zone and verified by **Seasonal Mann-Kendall** testing (p = 1.524e-02, statistically significant at 95% confidence). The adjacent Control Zone greenbelt exhibited no comparable escalation. The thermodynamic scar is further corroborated by the 3-year UHI anomaly composite and rigorously bounded by Pixel-Level UQ error bars.
+- **Thermodynamic Escalation (LST):** The STL-decomposed trend reveals a net Sprawl Zone warming of +6.5°C over the study period. After **DiD** isolation against the Control Zone, the Mann-Kendall test on the deseasonalized $\Delta$ Trend confirms a statistically significant divergence (p = 3.03e-04, significant at 99.97% confidence). The thermodynamic scar is further corroborated by the 3-year UHI anomaly composite and rigorously bounded by Pixel-Level UQ error bars.
 
 ## 4. Repository Structure
 
@@ -93,7 +93,7 @@ OSM_AUDIT_2025/
 │   └── processed/              # Kepler CSVs and projections
 ├── visualisations/             # Output NDVI/LST charts
 ├── documentation/              # Sprawl zone point rationale & OSM accuracy citations
-├── requirements.txt            # Python dependencies (incl. pymannkendall)
+├── requirements.txt            # Python dependencies (incl. pymannkendall, statsmodels)
 ├── LICENSE                     # MIT License
 └── README.md
 ```
