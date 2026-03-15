@@ -55,7 +55,7 @@ The execution of this pipeline yielded the following statistically verified metr
 
 - **Logistical Sprawl:** A total land conversion of 13.21 hectares (132,123.11 SQM) of the Green Belt into impermeable asphalt parking surfaces (distinct from the 16.4 ha of building floorspace reported in the EIA).
 - **Energy Parasitism:** The identification of 17 new high-capacity grid nodes for virtual rendering and HVAC maintenance.
-- **Biophysical Erasure (NDVI):** A permanent structural collapse from a baseline NDVI of ~0.635 to ~0.28 (Mann-Kendall p ≈ 0.000000, statistically significant at 99.9% confidence). The adjacent Control Zone remained stable.
+- **Biophysical Erasure (NDVI):** A permanent structural collapse from a baseline NDVI of ~0.635 to ~0.28 (Mann-Kendall p < 0.001, statistically significant at 99.9% confidence). The adjacent Control Zone remained stable.
 - **Thermodynamic Escalation (LST):** A net structural increase in Land Surface Temperature of +5°C natively attributed to algorithmic metabolism and asphalt heat retention, visually validated by the 3-year UHI anomaly composite.
 
 ## 4. Repository Structure
