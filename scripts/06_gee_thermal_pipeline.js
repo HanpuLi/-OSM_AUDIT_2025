@@ -63,19 +63,17 @@ var extractStats = function(image) {
     scale: 30
   });
   
-  var statsList = stats.toList(10);
+  // 安全提取：使用 filter + first，避免动态生成导致的属性类型丢失
+  var sp = ee.Feature(stats.filter(ee.Filter.eq('label', 'Sprawl_Zone_Core')).first());
+  var ct = ee.Feature(stats.filter(ee.Filter.eq('label', 'Control_Zone')).first());
   
-  var keys = statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_mean'); })
-      .cat(statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_std'); }));
-      
-  var values = statsList.map(function(f) { return ee.Feature(f).get('mean'); })
-      .cat(statsList.map(function(f) { return ee.Feature(f).get('stdDev'); }));
-      
-  var dict = ee.Dictionary.fromLists(keys, values);
-  // 必须保留 GEE 原生的数字型 Timestamp，如果变成 String 会导致 ui.Chart 崩溃！
-  dict = dict.set('system:time_start', ee.Number(image.get('system:time_start')));
-  
-  return ee.Feature(null, dict);
+  // 原生保留 system:time_start 防止图表 x 轴识别报错
+  return ee.Feature(null, {
+    'Sprawl_Zone_Core_mean': sp.get('mean'),
+    'Sprawl_Zone_Core_std': sp.get('stdDev'),
+    'Control_Zone_mean': ct.get('mean'),
+    'Control_Zone_std': ct.get('stdDev')
+  }).set('system:time_start', image.get('system:time_start'));
 };
 
 // 获得宽表 FeatureCollection，每张影像对应1行
