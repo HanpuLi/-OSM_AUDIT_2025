@@ -29,21 +29,19 @@ def plot_ndvi_collapse(csv_path, output_path):
     # 数据预处理与高级信号滤波 (Savitzky-Golay)
     # ---------------------------------------------------------
     df['system:time_start'] = pd.to_datetime(df['system:time_start'])
-    
-    # 因为现在的 CSV 是综合输出的，我们需要分离 Sprawl_Core 和 Control_Zone 甚至是敏感分析点
-    if 'Sprawl_Zone_Core' not in df.columns:
-        print("[ERROR] CSV format invalid. Cannot find 'Sprawl_Zone_Core' column. Did you run the latest GEE script?")
-        return
-        
     df = df.sort_values('system:time_start').set_index('system:time_start')
-    
-    # 提取 Sprawl Core 进行衰减绘图
-    df_sprawl = df[['Sprawl_Zone_Core']].copy()
-    df_sprawl.rename(columns={'Sprawl_Zone_Core': 'NDVI_Sprawl'}, inplace=True)
+        
+    # 提取 Sprawl Core 进行衰减绘图 (要求包含 Mean 和 StdDev)
+    if 'Sprawl_Zone_Core_mean' not in df.columns or 'Sprawl_Zone_Core_std' not in df.columns:
+         print("[ERROR] CSV missing '_mean' or '_std' columns. Did you update the GEE script for UQ?")
+         return
+
+    df_sprawl = df[['Sprawl_Zone_Core_mean', 'Sprawl_Zone_Core_std']].copy()
+    df_sprawl.rename(columns={'Sprawl_Zone_Core_mean': 'NDVI_Sprawl', 'Sprawl_Zone_Core_std': 'NDVI_Sprawl_Std'}, inplace=True)
     
     # 提取 Control Zone 作为对照
-    df_control = df[['Control_Zone']].copy()
-    df_control.rename(columns={'Control_Zone': 'NDVI_Control'}, inplace=True)
+    df_control = df[['Control_Zone_mean', 'Control_Zone_std']].copy()
+    df_control.rename(columns={'Control_Zone_mean': 'NDVI_Control', 'Control_Zone_std': 'NDVI_Control_Std'}, inplace=True)
     
     # 将离散的卫星过境数据重采样为连续的每日时间序列，并线性插值填补云遮挡导致的缺失值
     df_daily_sprawl = df_sprawl.resample('D').mean().interpolate(method='time')
@@ -56,6 +54,11 @@ def plot_ndvi_collapse(csv_path, output_path):
     df_daily['Sprawl_SG'] = savgol_filter(df_daily['NDVI_Sprawl'], window_length=365, polyorder=3)
     df_daily['Control_SG'] = savgol_filter(df_daily['NDVI_Control'], window_length=365, polyorder=3)
     df_daily['Delta_SG'] = savgol_filter(df_daily['Delta_NDVI'], window_length=365, polyorder=3)
+    
+    # 平滑化空间方差包络带 (UQ)
+    df_daily['Sprawl_Std_SG'] = df_daily['NDVI_Sprawl_Std'].rolling('180D', min_periods=30, center=True).mean().bfill().ffill()
+    df_daily['Sprawl_Upper'] = df_daily['Sprawl_SG'] + df_daily['Sprawl_Std_SG']
+    df_daily['Sprawl_Lower'] = df_daily['Sprawl_SG'] - df_daily['Sprawl_Std_SG']
 
     # 2018 基线 (使用原始 Sprawl NDVI 数据计算)
     baseline_2018 = df_daily.loc['2018', 'NDVI_Sprawl'].mean()
@@ -83,13 +86,18 @@ def plot_ndvi_collapse(csv_path, output_path):
     ax.plot(df_daily.index, df_daily['Sprawl_SG'], color='#FF3333', linewidth=4, 
             label='Sprawl Trend (Anthropogenic Collapse)', alpha=0.95)
             
+    # Uncertainty Quantification (UQ) Error Band (± 1 StdDev)
+    ax.fill_between(df_daily.index, df_daily['Sprawl_Lower'], df_daily['Sprawl_Upper'],
+                    color='#FF3333', alpha=0.15, label='Spatial Variance ($\pm 1\sigma$ UQ)', linewidth=0)
+            
     # 新增 Control Zone 绿带对照线
     ax.plot(df_daily.index, df_daily['Control_SG'], color='#33CC33', linewidth=3, linestyle='-.',
             label='Control Zone Trend (Climate Baseline)', alpha=0.8)
 
+    # 用浅红色阴影填充低于 2018 基线的部分以突显损失面积
     ax.fill_between(df_daily.index, df_daily['Sprawl_SG'], baseline_2018, 
                     where=(df_daily['Sprawl_SG'] < baseline_2018), 
-                    color='#FF3333', alpha=0.25, interpolate=True, label='Permanent Loss')
+                    color='#FF3333', alpha=0.25, interpolate=True, label='Net Permanent Loss')
 
     # Mann-Kendall 结果标注 (DiD + Seasonal)
     sig = 'Significant' if mk_result.p < 0.05 else 'Not Significant'
