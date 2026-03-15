@@ -7,7 +7,12 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import numpy as np
+import warnings
 import pymannkendall as mk
+
+# Suppress interactive mode warnings for CLI execution
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib.figure")
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -68,10 +73,16 @@ def plot_ndvi_collapse(csv_path, output_path):
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     ax.xaxis.set_major_locator(mdates.YearLocator())
 
+    # 添加数据源署名
+    fig.text(0.98, 0.02, 'Data: ESA Sentinel-2 (S2_SR_HARMONIZED) | Projection: EPSG:27700 | Author: H. Li', 
+             fontsize=9, color='#888888', ha='right', va='bottom', fontfamily='Helvetica')
+    
     plt.tight_layout()
-    plt.savefig(output_path, facecolor='black', dpi=400, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='#111111')
     print(f"SAVED: {output_path}")
-    plt.show()
+    # 仅当在非 headless 环境下才调用 show 
+    if os.environ.get('MPLBACKEND') != 'Agg':
+        plt.show(block=False)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
+import warnings
 
+# Suppress interactive mode warnings for CLI execution
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib.figure")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -60,10 +63,16 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     ax.grid(True, color='#333333', linestyle=':', linewidth=1)
     ax.legend(loc='upper left', fontsize=12, frameon=True, facecolor='#111111', edgecolor='#444444')
 
+    # 添加数据源署名
+    fig.text(0.98, 0.02, 'Data: USGS Landsat 8 (TIRS) | Projection: EPSG:27700 | Author: H. Li', 
+             fontsize=9, color='#888888', ha='right', va='bottom', fontfamily='Helvetica')
+
     plt.tight_layout()
-    plt.savefig(output_image_path, facecolor=fig.get_facecolor(), edgecolor='none')
+    plt.savefig(output_image_path, dpi=300, bbox_inches='tight', facecolor='#111111')
     print(f"SAVED: {output_image_path}")
-    plt.show()
+    # 仅当在非 headless 环境下才调用 show 
+    if os.environ.get('MPLBACKEND') != 'Agg':
+        plt.show(block=False)
 
 if __name__ == "__main__":
     input_csv = os.path.join(PROJECT_ROOT, 'data', 'raw_telemetry', 'ee-chart.csv')
