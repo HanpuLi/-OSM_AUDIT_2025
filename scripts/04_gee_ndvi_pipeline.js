@@ -17,16 +17,6 @@ var sprawlZone = ee.Geometry.Point([-0.469366, 51.410315]).buffer(100);
 // 3. 对照区：Sunbury 方向未开发的稳定绿地（距 Shepperton ~2km，无大型开发）
 var controlZone = ee.Geometry.Point([-0.4104592619093905, 51.40739479750269]).buffer(100);
 
-// 4. 敏感性分析点：围绕 sprawl zone 不同方位取样
-var sensitivity = {
-  'Sprawl_Core':  ee.Geometry.Point([-0.469366, 51.410315]).buffer(100),
-  'Sprawl_North': ee.Geometry.Point([-0.469366, 51.411500]).buffer(100),
-  'Sprawl_South': ee.Geometry.Point([-0.469366, 51.409100]).buffer(100),
-  'Sprawl_East':  ee.Geometry.Point([-0.467000, 51.410315]).buffer(100),
-  'Sprawl_West':  ee.Geometry.Point([-0.472000, 51.410315]).buffer(100),
-  'Control':      ee.Geometry.Point([-0.4104592619093905, 51.40739479750269]).buffer(100)
-};
-
 // Sentinel-2
 var sentinel2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
   .filterBounds(analysisBuffer)
@@ -60,11 +50,7 @@ var ndviCollection = sentinel2.map(function(img) {
 // 既然需要做长期时序分析对比，最好的办法是把所有区域合并成一个FeatureCollection多序列输出
 var roiCollection = ee.FeatureCollection([
   ee.Feature(sprawlZone, {label: 'Sprawl_Zone_Core'}),
-  ee.Feature(controlZone, {label: 'Control_Zone'}),
-  ee.Feature(sensitivity['Sprawl_North'], {label: 'Sprawl_North'}),
-  ee.Feature(sensitivity['Sprawl_South'], {label: 'Sprawl_South'}),
-  ee.Feature(sensitivity['Sprawl_East'], {label: 'Sprawl_East'}),
-  ee.Feature(sensitivity['Sprawl_West'], {label: 'Sprawl_West'})
+  ee.Feature(controlZone, {label: 'Control_Zone'})
 ]);
 
 // 为了计算方差 (stdDev) 并导出宽表 (Wide Format)
@@ -78,19 +64,17 @@ var extractStats = function(image) {
     scale: 10
   });
   
-  var statsList = stats.toList(10);
+  // 安全提取：使用 filter + first，避免动态生成导致的属性类型丢失
+  var sp = ee.Feature(stats.filter(ee.Filter.eq('label', 'Sprawl_Zone_Core')).first());
+  var ct = ee.Feature(stats.filter(ee.Filter.eq('label', 'Control_Zone')).first());
   
-  var keys = statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_mean'); })
-      .cat(statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_std'); }));
-      
-  var values = statsList.map(function(f) { return ee.Feature(f).get('mean'); })
-      .cat(statsList.map(function(f) { return ee.Feature(f).get('stdDev'); }));
-      
-  var dict = ee.Dictionary.fromLists(keys, values);
-  // 必须保留 GEE 原生的数字型 Timestamp，如果变成 String 会导致 ui.Chart 崩溃！
-  dict = dict.set('system:time_start', ee.Number(image.get('system:time_start')));
-  
-  return ee.Feature(null, dict);
+  // 原生保留 system:time_start 防止图表 x 轴识别报错
+  return ee.Feature(null, {
+    'Sprawl_Zone_Core_mean': sp.get('mean'),
+    'Sprawl_Zone_Core_std': sp.get('stdDev'),
+    'Control_Zone_mean': ct.get('mean'),
+    'Control_Zone_std': ct.get('stdDev')
+  }).set('system:time_start', ee.Number(image.get('system:time_start')));
 };
 
 // 获得宽表 FeatureCollection，每张影像对应1行，包含所有区域的 mean 和 stdDev
