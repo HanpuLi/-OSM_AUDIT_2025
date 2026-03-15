@@ -52,7 +52,7 @@ var roiCollection = ee.FeatureCollection([
   ee.Feature(controlZone, {label: 'Control_Zone'})
 ]);
 
-// 为了计算方差 (stdDev) 实现 UQ 误差带，我们必须手动 map 提取 Mean 和 StdDev
+// 为了计算方差 (stdDev) 并导出宽表 (Wide Format)
 var extractStats = function(image) {
   var stats = image.reduceRegions({
     collection: roiCollection,
@@ -63,42 +63,41 @@ var extractStats = function(image) {
     scale: 30
   });
   
-  // 将时刻注入到属性中
-  return stats.map(function(feat) {
-    return feat.set('system:time_start', image.get('system:time_start'));
-  });
+  var statsList = stats.toList(10);
+  
+  var keys = statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_mean'); })
+      .cat(statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_std'); }));
+      
+  var values = statsList.map(function(f) { return ee.Feature(f).get('mean'); })
+      .cat(statsList.map(function(f) { return ee.Feature(f).get('stdDev'); }));
+      
+  var dict = ee.Dictionary.fromLists(keys, values);
+  dict = dict.set('system:time_start', image.get('system:time_start'));
+  
+  return ee.Feature(null, dict);
 };
 
-var timeSeriesData = lstCollection.map(extractStats).flatten();
-
-// 整理成宽表格式供 CSV 导出
-var pivotData = timeSeriesData.map(function(feat) {
-  var dateStr = ee.Date(feat.get('system:time_start')).format('YYYY-MM-dd');
-  var label = feat.get('label');
-  var meanVal = feat.get('mean');
-  var stdVal = feat.get('stdDev');
-  
-  var props = { 'system:time_start': dateStr };
-  var dict = ee.Dictionary(props)
-    .set(ee.String(label).cat('_mean'), meanVal)
-    .set(ee.String(label).cat('_std'), stdVal);
-    
-  return ee.Feature(null, dict);
-});
+// 获得宽表 FeatureCollection，每张影像对应1行
+var timeSeriesData = lstCollection.map(extractStats);
 
 var consolidatedChart = ui.Chart.feature.byFeature({
   features: timeSeriesData,
   xProperty: 'system:time_start',
-  yProperties: ['mean']
+  yProperties: [
+    'Sprawl_Zone_Core_mean', 'Sprawl_Zone_Core_std', 
+    'Control_Zone_mean', 'Control_Zone_std'
+  ]
 })
-.setSeriesNames(['LST_Mean'])
+.setChartType('ScatterChart')
 .setOptions({
-  title: 'LST Analytics Extraction Ready (with UQ StdDev)',
+  title: 'LST Analytics Extraction Ready (with UQ StdDev Wide-Format)',
   vAxis: {title: 'LST Celsius'},
+  pointSize: 4,
+  dataOpacity: 0.6
 });
 
 print("【ACTION REQUIRED】");
-print("1. We now export RAW LONG FORMAT telemetry including the Pixel Standard Deviation (stdDev) for Academic UQ.");
+print("1. We now explicitly export WIDE-FORMAT telemetry including Pixel StdDev.");
 print("2. Click the pop-out arrow in the top right of this chart -> Download CSV.");
 print("3. MUST Save as: data/raw_telemetry/ee-chart_lst.csv");
 print(consolidatedChart);
