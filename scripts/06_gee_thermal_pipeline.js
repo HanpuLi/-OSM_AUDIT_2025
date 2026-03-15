@@ -72,7 +72,8 @@ var extractStats = function(image) {
       .cat(statsList.map(function(f) { return ee.Feature(f).get('stdDev'); }));
       
   var dict = ee.Dictionary.fromLists(keys, values);
-  dict = dict.set('system:time_start', image.get('system:time_start'));
+  // 必须保留 GEE 原生的数字型 Timestamp，如果变成 String 会导致 ui.Chart 崩溃！
+  dict = dict.set('system:time_start', ee.Number(image.get('system:time_start')));
   
   return ee.Feature(null, dict);
 };
