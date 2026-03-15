@@ -33,9 +33,17 @@ var sentinel2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
 
 function maskS2clouds(image) {
+  // 1. 基本的 QA60 去云掩膜
   var qa = image.select('QA60');
-  var mask = qa.bitwiseAnd(1 << 10).eq(0).and(qa.bitwiseAnd(1 << 11).eq(0));
-  return image.updateMask(mask).divide(10000);
+  var maskQA = qa.bitwiseAnd(1 << 10).eq(0).and(qa.bitwiseAnd(1 << 11).eq(0));
+  
+  // 2. 增强型 SCL (Scene Classification Layer) 场景分类去云
+  // 剔除：3(云影), 8(中概率云), 9(高概率云), 10(薄卷云), 11(雪/冰)
+  var scl = image.select('SCL');
+  var maskSCL = scl.neq(3).and(scl.neq(8)).and(scl.neq(9)).and(scl.neq(10)).and(scl.neq(11));
+  
+  // 结合两层掩膜，除以 10000 还原反射率真实值
+  return image.updateMask(maskQA).updateMask(maskSCL).divide(10000);
 }
 
 var ndviCollection = sentinel2.map(function(img) {

@@ -24,7 +24,18 @@ var landsat8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
 
 function prepLST(image) {
   var qa = image.select('QA_PIXEL');
-  var mask = qa.bitwiseAnd(1 << 4).eq(0).and(qa.bitwiseAnd(1 << 3).eq(0));
+  
+  // 增强型 Landsat 8 去云掩膜：包含扩张云(Bit 1)、云(Bit 3)、云影(Bit 4)、雪(Bit 5)
+  var dilatedCloud = 1 << 1;
+  var cloud = 1 << 3;
+  var cloudShadow = 1 << 4;
+  var snow = 1 << 5;
+  
+  var mask = qa.bitwiseAnd(dilatedCloud).eq(0)
+    .and(qa.bitwiseAnd(cloud).eq(0))
+    .and(qa.bitwiseAnd(cloudShadow).eq(0))
+    .and(qa.bitwiseAnd(snow).eq(0));
+
   var lstCelsius = image.select('ST_B10').multiply(0.00341802).add(149.0)
     .subtract(273.15).rename('LST_Celsius');
   return image.addBands(lstCelsius).updateMask(mask)
