@@ -101,8 +101,7 @@ def plot_ndvi_collapse(csv_path, output_path):
 
     # Mann-Kendall 结果标注 (DiD + Seasonal)
     sig = 'Significant' if mk_result.p < 0.05 else 'Not Significant'
-    p_str = '< 0.001' if mk_result.p < 0.001 else f'= {mk_result.p:.4f}'
-    mk_label = r'DiD Seasonal MK ($\Delta$ NDVI): τ={:.3f}, p {} ({})'.format(mk_result.Tau, p_str, sig)
+    mk_label = r'DiD Seasonal MK ($\Delta$ NDVI): τ={:.3f}, p={:.3e} ({})'.format(mk_result.Tau, mk_result.p, sig)
     ax.text(0.02, 0.02, mk_label, transform=ax.transAxes, fontsize=11,
             fontfamily='Courier New', color='#FFCC00',
             bbox=dict(boxstyle='round,pad=0.4', facecolor='#111111', edgecolor='#FFCC00', alpha=0.8))
