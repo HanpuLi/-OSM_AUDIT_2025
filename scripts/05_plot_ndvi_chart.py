@@ -39,52 +39,62 @@ def plot_ndvi_collapse(csv_path, output_path):
     
     # 提取 Sprawl Core 进行衰减绘图
     df_sprawl = df[['Sprawl_Zone_Core']].copy()
-    df_sprawl.rename(columns={'Sprawl_Zone_Core': 'NDVI'}, inplace=True)
+    df_sprawl.rename(columns={'Sprawl_Zone_Core': 'NDVI_Sprawl'}, inplace=True)
     
     # 提取 Control Zone 作为对照
     df_control = df[['Control_Zone']].copy()
+    df_control.rename(columns={'Control_Zone': 'NDVI_Control'}, inplace=True)
     
     # 将离散的卫星过境数据重采样为连续的每日时间序列，并线性插值填补云遮挡导致的缺失值
-    df_daily = df_sprawl[['NDVI']].resample('D').mean().interpolate(method='time')
+    df_daily_sprawl = df_sprawl.resample('D').mean().interpolate(method='time')
+    df_daily_control = df_control.resample('D').mean().interpolate(method='time')
     
-    # 丢弃头尾全空的无效数据段
-    df_daily = df_daily.dropna()
+    df_daily = pd.concat([df_daily_sprawl, df_daily_control], axis=1).dropna()
+    df_daily['Delta_NDVI'] = df_daily['NDVI_Sprawl'] - df_daily['NDVI_Control']
     
-    # Savitzky-Golay 滤波 (相比于普通 Rolling Mean，更精确保留植被生长的季节性波峰波谷特征)
-    # Window size 365 days, Polynomial order 3
-    df_daily['NDVI_SG'] = savgol_filter(df_daily['NDVI'], window_length=365, polyorder=3)
+    # Savitzky-Golay 滤波 (保留植被生长的季节性波峰波谷特征)
+    df_daily['Sprawl_SG'] = savgol_filter(df_daily['NDVI_Sprawl'], window_length=365, polyorder=3)
+    df_daily['Control_SG'] = savgol_filter(df_daily['NDVI_Control'], window_length=365, polyorder=3)
+    df_daily['Delta_SG'] = savgol_filter(df_daily['Delta_NDVI'], window_length=365, polyorder=3)
 
-    # 2018 基线 (使用原始NDVI数据计算)
-    baseline_2018 = df_daily.loc['2018', 'NDVI'].mean()
+    # 2018 基线 (使用原始 Sprawl NDVI 数据计算)
+    baseline_2018 = df_daily.loc['2018', 'NDVI_Sprawl'].mean()
 
-    # Mann-Kendall 趋势检验 (对平滑后的数据进行检验)
-    mk_result = mk.original_test(df_daily['NDVI_SG'].dropna())
-    print(f"Mann-Kendall test: trend={mk_result.trend}, p={mk_result.p:.6f}, "
+    # 进阶严谨法：季节性 Mann-Kendall (Seasonal MK) 与双重差分 (DiD)
+    # 对 Delta_SG 信号执行季节性 MK 检验，完全剥离区域气候变暖和年度周期的干扰
+    mk_result = mk.seasonal_test(df_daily['Delta_SG'].dropna(), period=365)
+    print(f"DiD Seasonal MK test: trend={mk_result.trend}, p={mk_result.p:.6f}, "
           f"tau={mk_result.Tau:.4f}, slope={mk_result.slope:.6f}/obs")
 
     # 动态 Y 轴范围
-    ndvi_min_sg = df_daily['NDVI_SG'].min()
-    ndvi_min_raw = df_sprawl['NDVI'].min()
+    ndvi_min_sg = df_daily['Sprawl_SG'].min()
+    ndvi_min_raw = df_daily['NDVI_Sprawl'].min()
     
     y_low = min(ndvi_min_sg * 0.8, baseline_2018 * 0.6, ndvi_min_raw - 0.05)
-    y_high = baseline_2018 * 1.2
+    y_high = max(df_daily['Control_SG'].max() * 1.05, baseline_2018 * 1.2)
 
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(14, 8), dpi=400)
 
-    ax.scatter(df_sprawl.index, df_sprawl['NDVI'], color='#555555', alpha=0.25, s=8, label='Raw (Seasonal Noise)')
+    ax.scatter(df_daily.index, df_daily['NDVI_Sprawl'], color='#555555', alpha=0.25, s=8, label='Raw Sprawl (Seasonal Noise)')
     ax.axhline(y=baseline_2018, color='#00FFCC', linestyle='--', linewidth=3, 
-               label=f'2018 Baseline (~{baseline_2018:.3f})')
-    ax.plot(df_daily.index, df_daily['NDVI_SG'], color='#FF3333', linewidth=5, 
-            label='Structural Trend (365D Savitzky-Golay)', alpha=0.95)
-    ax.fill_between(df_daily.index, df_daily['NDVI_SG'], baseline_2018, 
-                    where=(df_daily['NDVI_SG'] < baseline_2018), 
+               label=f'2018 Sprawl Baseline (~{baseline_2018:.3f})')
+               
+    ax.plot(df_daily.index, df_daily['Sprawl_SG'], color='#FF3333', linewidth=4, 
+            label='Sprawl Trend (Anthropogenic Collapse)', alpha=0.95)
+            
+    # 新增 Control Zone 绿带对照线
+    ax.plot(df_daily.index, df_daily['Control_SG'], color='#33CC33', linewidth=3, linestyle='-.',
+            label='Control Zone Trend (Climate Baseline)', alpha=0.8)
+
+    ax.fill_between(df_daily.index, df_daily['Sprawl_SG'], baseline_2018, 
+                    where=(df_daily['Sprawl_SG'] < baseline_2018), 
                     color='#FF3333', alpha=0.25, interpolate=True, label='Permanent Loss')
 
-    # Mann-Kendall 结果标注
+    # Mann-Kendall 结果标注 (DiD + Seasonal)
     sig = 'Significant' if mk_result.p < 0.05 else 'Not Significant'
     p_str = '< 0.001' if mk_result.p < 0.001 else f'= {mk_result.p:.4f}'
-    mk_label = f'Mann-Kendall: τ={mk_result.Tau:.3f}, p {p_str} ({sig})'
+    mk_label = r'DiD Seasonal MK ($\Delta$ NDVI): τ={:.3f}, p {} ({})'.format(mk_result.Tau, p_str, sig)
     ax.text(0.02, 0.02, mk_label, transform=ax.transAxes, fontsize=11,
             fontfamily='Courier New', color='#FFCC00',
             bbox=dict(boxstyle='round,pad=0.4', facecolor='#111111', edgecolor='#FFCC00', alpha=0.8))
