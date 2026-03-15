@@ -45,31 +45,35 @@ function prepLST(image) {
 var lstCollection = landsat8.map(prepLST).select('LST_Celsius');
 
 // ==============================================================================
-// 图表: Sprawl Zone vs Control Zone LST 时序
+// 图表: 统一输出合并图表 (Sprawl vs Control)
 // ==============================================================================
-var chartSprawl = ui.Chart.image.series({
-  imageCollection: lstCollection, region: sprawlZone,
-  reducer: ee.Reducer.mean(), scale: 30, xProperty: 'system:time_start'
+var roiCollection = ee.FeatureCollection([
+  ee.Feature(sprawlZone, {label: 'Sprawl_Zone_Core'}),
+  ee.Feature(controlZone, {label: 'Control_Zone'})
+]);
+
+var consolidatedChart = ui.Chart.image.seriesByRegion({
+  imageCollection: lstCollection,
+  regions: roiCollection,
+  reducer: ee.Reducer.mean(),
+  band: 'LST_Celsius',
+  scale: 30,
+  xProperty: 'system:time_start',
+  seriesProperty: 'label'
 }).setOptions({
-  title: 'Sprawl Zone: LST Trend (2015-2026)',
-  vAxis: {title: '°C'}, hAxis: {title: 'Date'},
-  lineWidth: 0, pointSize: 4, colors: ['#FF4500'], 
-  trendlines: {0: {color: 'red', lineWidth: 2, opacity: 0.8, showR2: true}}
+  title: 'Consolidated LST Time Series (Sprawl vs Control)',
+  vAxis: {title: 'Land Surface Temperature (°C)'},
+  lineWidth: 0, 
+  pointSize: 4,
+  series: {
+    0: {color: '#FF0000'}, // Sprawl_Core (Red)
+    1: {color: '#00FF00'}  // Control (Green)
+  }
 });
+
 print("【ACTION REQUIRED】 Click the pop-out arrow in the top right of this chart to download the CSV data.");
 print("⚠️ Please rename the downloaded file to: ee-chart_lst.csv when placing it in the raw_telemetry/ folder.");
-print(chartSprawl);
-
-var chartControl = ui.Chart.image.series({
-  imageCollection: lstCollection, region: controlZone,
-  reducer: ee.Reducer.mean(), scale: 30, xProperty: 'system:time_start'
-}).setOptions({
-  title: 'Control Zone: LST Trend (Undeveloped Reference)',
-  vAxis: {title: '°C'}, hAxis: {title: 'Date'},
-  lineWidth: 0, pointSize: 4, colors: ['#33CC33'], 
-  trendlines: {0: {color: 'green', lineWidth: 2, opacity: 0.8, showR2: true}}
-});
-print(chartControl);
+print(consolidatedChart);
 
 // ==============================================================================
 // UHI Anomaly: 多年夏季复合（消除单一年份气候异常）

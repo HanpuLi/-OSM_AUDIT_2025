@@ -25,11 +25,24 @@ def render_thermodynamic_chart(csv_path, output_image_path):
         print(f"[ERROR] Cannot find {csv_path}")
         return
 
-    df = df.dropna(subset=['LST_Celsius'])
-    df['system:time_start'] = pd.to_datetime(df['system:time_start'])
-    df = df.sort_values('system:time_start').set_index('system:time_start')
+    if 'Sprawl_Zone_Core' not in df.columns:
+        print("[ERROR] CSV format invalid. Cannot find 'Sprawl_Zone_Core' column. Did you run the latest GEE LST script?")
+        return
 
-    print(f"Data points: {len(df)}")
+    # 提取 Sprawl Core 进行分析
+    df_sprawl = df[['system:time_start', 'Sprawl_Zone_Core']].copy()
+    df_sprawl.rename(columns={'Sprawl_Zone_Core': 'LST_Celsius'}, inplace=True)
+    df_sprawl = df_sprawl.dropna(subset=['LST_Celsius'])
+    df_sprawl['system:time_start'] = pd.to_datetime(df_sprawl['system:time_start'])
+    df_sprawl = df_sprawl.sort_values('system:time_start').set_index('system:time_start')
+    
+    # 提取 Control Zone (可选，目前不在同一个图里画)
+    df_control = df[['system:time_start', 'Control_Zone']].copy()
+
+    print(f"Data points: {len(df_sprawl)}")
+    
+    # 将 df_sprawl 赋值回 df 保持下游代码兼容
+    df = df_sprawl
 
     # ---------------------------------------------------------
     # 数据预处理与平滑 (Savitzky-Golay)
