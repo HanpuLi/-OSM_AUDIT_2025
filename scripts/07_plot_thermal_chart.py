@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
 import warnings
+from scipy import stats
 
 # Suppress interactive mode warnings for CLI execution
 warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib.figure")
@@ -29,16 +30,34 @@ def render_thermodynamic_chart(csv_path, output_image_path):
 
     print(f"Data points: {len(df)}")
 
+    # ---------------------------------------------------------
+    # 线性回归与 95% 置信区间 (95% CI)
+    # ---------------------------------------------------------
     # 365D 滚动均线（消除季节性噪音）
     df['Rolling_Mean'] = df['LST_Celsius'].rolling('365D', min_periods=1).mean()
 
-    # 线性回归趋势线 (y = mx + c)
-    x_num = mdates.date2num(df.index)
-    z = np.polyfit(x_num, df['LST_Celsius'].values, 1)
-    p = np.poly1d(z)
-    df['Trendline'] = p(x_num)
+    # ---------------------------------------------------------
+    # 线性回归与 95% 置信区间 (95% CI)
+    # ---------------------------------------------------------
+    x_ordinal = df.index.map(pd.Timestamp.toordinal).values
+    y = df['LST_Celsius'].values
+    
+    # 线性拟合 (1阶)
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x_ordinal, y)
+    y_pred = intercept + slope * x_ordinal
+    
+    # 计算 95% 置信区间 (自由度 = n - 2)
+    t_val = stats.t.ppf(0.975, len(x_ordinal) - 2)
+    residuals = y - y_pred
+    mse = np.sum(residuals**2) / (len(x_ordinal) - 2)
+    x_mean = np.mean(x_ordinal)
+    ssx = np.sum((x_ordinal - x_mean)**2)
+    se_fit = np.sqrt(mse * (1/len(x_ordinal) + (x_ordinal - x_mean)**2 / ssx))
+    
+    y_ci_upper = y_pred + t_val * se_fit
+    y_ci_lower = y_pred - t_val * se_fit
 
-    net_increase = df['Trendline'].iloc[-1] - df['Trendline'].iloc[0]
+    net_increase = y_pred[-1] - y_pred[0]
     print(f"Net temperature trend: {'+' if net_increase > 0 else ''}{net_increase:.2f} °C")
 
     # 绘图
@@ -49,8 +68,12 @@ def render_thermodynamic_chart(csv_path, output_image_path):
                label='Raw LST Observations (Cloud-masked)')
     ax.plot(df.index, df['Rolling_Mean'], color='#FF8C00', linewidth=2.5, alpha=0.9, 
             label='365-Day Rolling Mean (Seasonal Noise Removed)')
-    ax.plot(df.index, df['Trendline'], color='#FF0000', linestyle='--', linewidth=3, 
-            label=f'Structural Trendline (Net Δ: +{net_increase:.2f}°C)')
+            
+    # 新增：合并了净增温和统计显著性的统一趋势线
+    ax.plot(df.index, y_pred, color='#FF0000', linestyle='--', linewidth=3, 
+            label=f'Structural Trendline (Net Δ: +{net_increase:.2f}°C, p = {p_value:.3e})')
+            
+    ax.fill_between(df.index, y_ci_lower, y_ci_upper, color='#FFCC00', alpha=0.2, label='95% Confidence Interval')
 
     ax.set_title('Thermodynamic Spatial Audit: Algorithmic Metabolism in the Sprawl Zone (2015-2023)', 
                  fontsize=18, fontweight='bold', color='white', pad=20, fontfamily='monospace')

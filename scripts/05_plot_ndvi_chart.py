@@ -10,6 +10,7 @@ import matplotlib.dates as mdates
 import numpy as np
 import warnings
 import pymannkendall as mk
+from scipy.signal import savgol_filter
 
 # Suppress interactive mode warnings for CLI execution
 warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib.figure")
@@ -24,21 +25,32 @@ def plot_ndvi_collapse(csv_path, output_path):
         print(f"[ERROR] Cannot find {csv_path}")
         return
 
+    # ---------------------------------------------------------
+    # 数据预处理与高级信号滤波 (Savitzky-Golay)
+    # ---------------------------------------------------------
     df['system:time_start'] = pd.to_datetime(df['system:time_start'])
-    df = df.dropna(subset=['NDVI']).sort_values('system:time_start')
-    df.set_index('system:time_start', inplace=True)
+    df = df.sort_values('system:time_start').set_index('system:time_start')
+    
+    # 将离散的卫星过境数据重采样为连续的每日时间序列，并线性插值填补云遮挡导致的缺失值
+    df_daily = df[['NDVI']].resample('D').mean().interpolate(method='time')
+    
+    # 丢弃头尾全空的无效数据段
+    df_daily = df_daily.dropna()
+    
+    # Savitzky-Golay 滤波 (相比于普通 Rolling Mean，更精确保留植被生长的季节性波峰波谷特征)
+    # Window size 365 days, Polynomial order 3
+    df_daily['NDVI_SG'] = savgol_filter(df_daily['NDVI'], window_length=365, polyorder=3)
 
-    # 365D 滚动均线 + 2018 基线
-    df['Structural_Trend'] = df['NDVI'].rolling('365D', min_periods=5).mean()
-    baseline_2018 = df.loc['2018', 'NDVI'].mean()
+    # 2018 基线 (使用原始NDVI数据计算)
+    baseline_2018 = df_daily.loc['2018', 'NDVI'].mean()
 
-    # Mann-Kendall 趋势检验
-    mk_result = mk.original_test(df['NDVI'].dropna())
+    # Mann-Kendall 趋势检验 (对平滑后的数据进行检验)
+    mk_result = mk.original_test(df_daily['NDVI_SG'].dropna())
     print(f"Mann-Kendall test: trend={mk_result.trend}, p={mk_result.p:.6f}, "
           f"tau={mk_result.Tau:.4f}, slope={mk_result.slope:.6f}/obs")
 
     # 动态 Y 轴范围
-    ndvi_min = df['Structural_Trend'].min()
+    ndvi_min = df_daily['NDVI_SG'].min()
     y_low = min(ndvi_min * 0.8, baseline_2018 * 0.6)
     y_high = baseline_2018 * 1.2
 
@@ -48,10 +60,10 @@ def plot_ndvi_collapse(csv_path, output_path):
     ax.scatter(df.index, df['NDVI'], color='#555555', alpha=0.25, s=8, label='Raw (Seasonal Noise)')
     ax.axhline(y=baseline_2018, color='#00FFCC', linestyle='--', linewidth=3, 
                label=f'2018 Baseline (~{baseline_2018:.3f})')
-    ax.plot(df.index, df['Structural_Trend'], color='#FF3333', linewidth=5, 
-            label='Structural Trend (365D Rolling)', alpha=0.95)
-    ax.fill_between(df.index, df['Structural_Trend'], baseline_2018, 
-                    where=(df['Structural_Trend'] < baseline_2018), 
+    ax.plot(df_daily.index, df_daily['NDVI_SG'], color='#FF3333', linewidth=5, 
+            label='Structural Trend (365D Savitzky-Golay)', alpha=0.95)
+    ax.fill_between(df_daily.index, df_daily['NDVI_SG'], baseline_2018, 
+                    where=(df_daily['NDVI_SG'] < baseline_2018), 
                     color='#FF3333', alpha=0.25, interpolate=True, label='Permanent Loss')
 
     # Mann-Kendall 结果标注
