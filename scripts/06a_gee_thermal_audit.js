@@ -11,12 +11,15 @@ var END_DATE   = '2026-03-15';  // <-- UPDATE ME
 var sprawlZone = ee.Geometry.Point([-0.469366, 51.410315]).buffer(250); 
 var macroRegion = sprawlZone.buffer(1500);
 
-// 2. 对照区：Sunbury 方向稳定绿地
+// 2. 对照区
 var controlZone = ee.Geometry.Point([-0.4104592619093905, 51.40739479750269]).buffer(250);
 
-// Landsat 8（覆盖 sprawl + control 两个区域）
+// 覆盖两个区域的包围框
+var combinedBounds = sprawlZone.bounds().union(controlZone.bounds());
+
+// Landsat 8
 var landsat8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
-  .filterBounds(macroRegion.union(controlZone))
+  .filterBounds(combinedBounds)
   .filterDate(START_DATE, END_DATE);
 
 function prepLST(image) {
@@ -31,7 +34,7 @@ function prepLST(image) {
 var lstCollection = landsat8.map(prepLST).select('LST_Celsius');
 
 // ==============================================================================
-// 图表 1: Sprawl Zone LST 时序（带回归趋势线）
+// 图表: Sprawl Zone vs Control Zone LST 时序
 // ==============================================================================
 var chartSprawl = ui.Chart.image.series({
   imageCollection: lstCollection, region: sprawlZone,
@@ -44,7 +47,6 @@ var chartSprawl = ui.Chart.image.series({
 });
 print(chartSprawl);
 
-// 图表 2: 对照区 LST 时序
 var chartControl = ui.Chart.image.series({
   imageCollection: lstCollection, region: controlZone,
   reducer: ee.Reducer.mean(), scale: 30, xProperty: 'system:time_start'
@@ -57,25 +59,25 @@ var chartControl = ui.Chart.image.series({
 print(chartControl);
 
 // ==============================================================================
-// UHI Anomaly: 多年复合（3年均值 vs 3年均值）
-// 消除单一年份气候异常的影响
+// UHI Anomaly: 多年夏季复合（消除单一年份气候异常）
 // ==============================================================================
-// 施工前 2016-2018 夏季复合
-var lstPre = lstCollection.filterDate('2016-06-01', '2018-09-01')
-  .filter(ee.Filter.calendarRange(6, 8, 'month')).mean();
-// 施工后 2023-2025 夏季复合
-var lstPost = lstCollection.filterDate('2023-06-01', '2025-09-01')
-  .filter(ee.Filter.calendarRange(6, 8, 'month')).mean();
+var summerPre  = lstCollection.filter(ee.Filter.calendarRange(6, 8, 'month'))
+  .filterDate('2016-01-01', '2019-01-01').mean();
+var summerPost = lstCollection.filter(ee.Filter.calendarRange(6, 8, 'month'))
+  .filterDate('2023-01-01', '2026-01-01').mean();
 
-// 宏观背景均温（用于剥离气候趋势）
-var meanPre  = ee.Number(lstPre.reduceRegion({reducer: ee.Reducer.mean(), geometry: macroRegion, scale: 30}).get('LST_Celsius'));
-var meanPost = ee.Number(lstPost.reduceRegion({reducer: ee.Reducer.mean(), geometry: macroRegion, scale: 30}).get('LST_Celsius'));
+// 宏观背景均温（用于剥离区域气候趋势）
+var meanPre  = summerPre.reduceRegion({
+  reducer: ee.Reducer.mean(), geometry: macroRegion, scale: 30, bestEffort: true
+});
+var meanPost = summerPost.reduceRegion({
+  reducer: ee.Reducer.mean(), geometry: macroRegion, scale: 30, bestEffort: true
+});
 
-// 相对异常值：像素温度 - 区域均温 = 局部热岛强度
-var anomalyPre  = lstPre.subtract(meanPre).rename('UHI_Anomaly');
-var anomalyPost = lstPost.subtract(meanPost).rename('UHI_Anomaly');
+var anomalyPre  = summerPre.subtract(ee.Number(meanPre.get('LST_Celsius'))).rename('UHI');
+var anomalyPost = summerPost.subtract(ee.Number(meanPost.get('LST_Celsius'))).rename('UHI');
 
-// 净热力疤痕 = 施工后异常 - 施工前异常
+// 净热力疤痕
 var thermodynamicScar = anomalyPost.subtract(anomalyPre);
 
 // ==============================================================================
@@ -93,8 +95,8 @@ var scarVis = {
 Map.centerObject(sprawlZone, 14);
 Map.setOptions('SATELLITE');
 
-Map.addLayer(anomalyPre.clip(macroRegion), anomalyVis, 'Pre-Construction UHI (2016-2018 Summer Composite)', false);
-Map.addLayer(anomalyPost.clip(macroRegion), anomalyVis, 'Post-Construction UHI (2023-2025 Summer Composite)', false);
+Map.addLayer(anomalyPre.clip(macroRegion), anomalyVis, 'Pre-Construction UHI (2016-2018)', false);
+Map.addLayer(anomalyPost.clip(macroRegion), anomalyVis, 'Post-Construction UHI (2023-2025)', false);
 Map.addLayer(thermodynamicScar.clip(macroRegion), scarVis, 'Thermodynamic Scar (Net Heat Increase)');
 Map.addLayer(sprawlZone, {color: 'red'}, 'Sprawl Zone', true);
 Map.addLayer(controlZone, {color: 'green'}, 'Control Zone', true);
