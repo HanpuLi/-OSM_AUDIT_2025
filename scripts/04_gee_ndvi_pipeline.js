@@ -23,6 +23,7 @@ var sensitivity = {
   'Sprawl_North': ee.Geometry.Point([-0.469366, 51.411500]).buffer(100),
   'Sprawl_South': ee.Geometry.Point([-0.469366, 51.409100]).buffer(100),
   'Sprawl_East':  ee.Geometry.Point([-0.467000, 51.410315]).buffer(100),
+  'Sprawl_West':  ee.Geometry.Point([-0.472000, 51.410315]).buffer(100),
   'Control':      ee.Geometry.Point([-0.4104592619093905, 51.40739479750269]).buffer(100)
 };
 
@@ -32,7 +33,7 @@ var sentinel2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
   .filterDate(START_DATE, END_DATE)
   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
 
-function maskS2clouds(image) {
+var maskS2clouds = function(image) {
   // 1. 基本的 QA60 去云掩膜
   var qa = image.select('QA60');
   var maskQA = qa.bitwiseAnd(1 << 10).eq(0).and(qa.bitwiseAnd(1 << 11).eq(0));
@@ -42,15 +43,16 @@ function maskS2clouds(image) {
   var scl = image.select('SCL');
   var maskSCL = scl.neq(3).and(scl.neq(8)).and(scl.neq(9)).and(scl.neq(10)).and(scl.neq(11));
   
-  // 结合两层掩膜，除以 10000 还原反射率真实值
-  return image.updateMask(maskQA).updateMask(maskSCL).divide(10000);
-}
+  // 结合两层掩膜
+  var combinedMask = maskQA.and(maskSCL);
+  return image.updateMask(combinedMask).divide(10000);
+};
 
 var ndviCollection = sentinel2.map(function(img) {
   var masked = maskS2clouds(img);
   var ndvi = masked.normalizedDifference(['B8', 'B4']).rename('NDVI');
   return masked.addBands(ndvi).copyProperties(img, ['system:time_start', 'system:index']);
-}).select('NDVI');
+}).select(['NDVI']);
 
 // ==============================================================================
 // 图表 1: Sprawl Zone vs Control Zone 对比
