@@ -6,9 +6,13 @@ var analysisBuffer = shepperton.buffer(1000);
 // 2. 微观灾区
 var sprawlZone = ee.Geometry.Point([-0.469366, 51.410315]).buffer(100);
 
+// ⚠️ IMPORTANT: Update END_DATE to the current date before each run.
+var START_DATE = '2018-01-01';
+var END_DATE   = '2026-03-15';  // <-- UPDATE ME
+
 var sentinel2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
   .filterBounds(analysisBuffer)
-  .filterDate('2018-01-01', '2026-03-04')
+  .filterDate(START_DATE, END_DATE)
   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
 
 function maskS2clouds(image) {
@@ -40,7 +44,7 @@ print(tsChart);
 
 // 损失图（2018基线 vs 2026现状）
 var baseline2018 = ndviCollection.filterDate('2018-01-01', '2019-01-01').mean();
-var recent2026 = ndviCollection.filterDate('2025-09-01', '2026-03-04').mean();
+var recent2026 = ndviCollection.filterDate('2025-09-01', END_DATE).mean();
 var loss = baseline2018.subtract(recent2026).rename('NDVI_Loss');
 
 Map.centerObject(shepperton, 15);

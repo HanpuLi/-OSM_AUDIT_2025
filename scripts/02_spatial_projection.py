@@ -6,9 +6,17 @@ Converts raw WGS84 GeoJSON data into physical metrics using the British National
 
 import json
 import os
+import logging
 from shapely.geometry import shape
 import pyproj
 from shapely.ops import transform
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+
+# Project root: one level up from scripts/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Define Coordinate Reference Systems
 # WGS84 (Global Degrees) -> EPSG:27700 (British National Grid in Metres)
@@ -22,14 +30,14 @@ def run_spatial_audit(file_path):
     Returns: (total_parking_area, power_node_count)
     """
     if not os.path.exists(file_path):
-        print(f"[ERROR] Source file missing: {file_path}")
+        logger.error("Source file missing: %s", file_path)
         return 0.0, 0
     
     with open(file_path, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
         except json.JSONDecodeError:
-            print(f"[ERROR] Invalid JSON format in {file_path}")
+            logger.error("Invalid JSON format in %s", file_path)
             return 0.0, 0
             
     parking_area = 0.0
@@ -56,11 +64,11 @@ def run_spatial_audit(file_path):
     return parking_area, power_nodes
 
 if __name__ == "__main__":
-    print("--- INITIATING EMPIRICAL SPATIAL AUDIT (OSM_AUDIT_2025) ---")
+    logger.info("--- INITIATING EMPIRICAL SPATIAL AUDIT (OSM_AUDIT_2025) ---")
     
-    # Audit Paths (Align with Repository Architecture)
-    shep_path = 'geographic/raw/export_shepperton.geojson'
-    long_path = 'geographic/raw/export_longcross.geojson'
+    # Audit Paths (relative to project root)
+    shep_path = os.path.join(PROJECT_ROOT, 'data', 'raw_spatial', 'export_shepperton.geojson')
+    long_path = os.path.join(PROJECT_ROOT, 'data', 'raw_spatial', 'export_longcross.geojson')
     
     # Execute calculations
     shep_area, shep_pwr = run_spatial_audit(shep_path)
@@ -70,10 +78,10 @@ if __name__ == "__main__":
     total_hectares = total_area / 10000
     
     # Detailed Console Output
-    print(f"SHEPPERTON_SECTOR: {shep_area:,.2f} SQM | Nodes: {shep_pwr}")
-    print(f"LONGCROSS_SECTOR:  {long_area:,.2f} SQM | Nodes: {long_pwr}")
-    print("-" * 50)
-    print(f"AGGREGATE LOGISTICAL SPRAWL: {total_area:,.2f} SQM")
-    print(f"TOTAL LAND CONVERSION:      {total_hectares:,.4f} Hectares")
-    print(f"TOTAL POWER ANCHORS:        {shep_pwr + long_pwr}")
-    print("--- AUDIT COMPLETE: DATA READY FOR VISUALISATION ---")
+    logger.info("SHEPPERTON_SECTOR: %,.2f SQM | Nodes: %d", shep_area, shep_pwr)
+    logger.info("LONGCROSS_SECTOR:  %,.2f SQM | Nodes: %d", long_area, long_pwr)
+    logger.info("-" * 50)
+    logger.info("AGGREGATE LOGISTICAL SPRAWL: %,.2f SQM", total_area)
+    logger.info("TOTAL LAND CONVERSION:      %,.4f Hectares", total_hectares)
+    logger.info("TOTAL POWER ANCHORS:        %d", shep_pwr + long_pwr)
+    logger.info("--- AUDIT COMPLETE: DATA READY FOR VISUALISATION ---")

@@ -5,10 +5,15 @@ Processes raw LST (Land Surface Temperature) CSV data from GEE.
 Filters seasonal noise via 365-day rolling mean to expose structural heating trends.
 """
 
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
+
+# Project root: one level up from scripts/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def render_thermodynamic_chart(csv_path, output_image_path):
     print(f"--- INITIATING THERMODYNAMIC DATA PARSING: {csv_path} ---")
@@ -92,8 +97,7 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     plt.show()
 
 if __name__ == "__main__":
-    # 请确保此处的文件名与你的本地文件一致
-    input_csv = "ee-chart.csv" 
-    output_png = "thermodynamic_scar_chart.png"
-    
+    # NOTE: 热力遥感 CSV 数据需要从 GEE 导出后放置在 data/raw_telemetry/ 目录下
+    input_csv = os.path.join(PROJECT_ROOT, 'data', 'raw_telemetry', 'ee-chart.csv')
+    output_png = os.path.join(PROJECT_ROOT, 'visualisations', 'thermodynamic_scar_chart.png')
     render_thermodynamic_chart(input_csv, output_png)

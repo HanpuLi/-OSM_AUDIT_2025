@@ -2,6 +2,16 @@ import json
 import csv
 import os
 from shapely.geometry import shape
+from shapely.ops import transform
+import pyproj
+
+# Project root: one level up from scripts/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Coordinate projection for accurate area calculation
+WGS84 = "epsg:4326"
+BNG = "epsg:27700"
+projector = pyproj.Transformer.from_crs(WGS84, BNG, always_xy=True).transform
 
 def extract_features_for_kepler(file_path, sector_name):
     """
@@ -37,37 +47,41 @@ def extract_features_for_kepler(file_path, sector_name):
                 'category': props.get('power', 'infrastructure'),
                 'latitude': lat,
                 'longitude': lon,
-                'intensity': 1.0  # Used for heatmap weight
+                'intensity': 50.0  # Fixed weight for heatmap visibility
             })
             
         # 2. Extract Logistical Sprawl (Polygon Centroids for Heatmap weighting)
         if props.get('amenity') == 'parking' and geom['type'] in ['Polygon', 'MultiPolygon']:
-            # Calculate the geometric centre of the parking lot
             s = shape(geom)
             centroid = s.centroid
+            # Project to BNG (EPSG:27700) for accurate area in square metres
+            s_projected = transform(projector, s)
             features_list.append({
                 'sector': sector_name,
                 'audit_type': 'Logistical_Sprawl',
                 'category': 'asphalt_surface',
                 'latitude': centroid.y,
                 'longitude': centroid.x,
-                'intensity': s.area / 1000  # Weight the heatmap by the size of the parking lot
+                'intensity': s_projected.area  # Area in square metres
             })
             
     return features_list
 
 if __name__ == "__main__":
-    # Ensure the directory exists
-    os.makedirs('geographic', exist_ok=True)
+    # Ensure the output directory exists
+    output_dir = os.path.join(PROJECT_ROOT, 'data', 'processed')
+    os.makedirs(output_dir, exist_ok=True)
 
     # Process both studio sectors
-    shepperton_data = extract_features_for_kepler('geographic/raw/export_shepperton.geojson', 'Shepperton')
-    longcross_data = extract_features_for_kepler('geographic/raw/export_longcross.geojson', 'Longcross')
+    shepperton_data = extract_features_for_kepler(
+        os.path.join(PROJECT_ROOT, 'data', 'raw_spatial', 'export_shepperton.geojson'), 'Shepperton')
+    longcross_data = extract_features_for_kepler(
+        os.path.join(PROJECT_ROOT, 'data', 'raw_spatial', 'export_longcross.geojson'), 'Longcross')
 
     all_data = shepperton_data + longcross_data
 
     # Define output path
-    output_file = 'geographic/kepler_gl_visualisation.csv'
+    output_file = os.path.join(output_dir, 'kepler_gl_visualisation.csv')
 
     # Write to CSV with clear headers for Kepler.gl auto-detection
     fieldnames = ['sector', 'audit_type', 'category', 'latitude', 'longitude', 'intensity']

@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+bin/
+lib/
+include/
+share/
+pyvenv.cfg
+
+# Intermediate / generated data files
+data/processed/*.csv
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
