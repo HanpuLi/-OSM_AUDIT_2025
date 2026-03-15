@@ -67,7 +67,7 @@ var roiCollection = ee.FeatureCollection([
   ee.Feature(sensitivity['Sprawl_West'], {label: 'Sprawl_West'})
 ]);
 
-// 为了计算方差 (stdDev) 实现 UQ 误差带，我们不能用简单的 seriesByRegion，必须手动 map 提取 Mean 和 StdDev
+// 为了计算方差 (stdDev) 并导出宽表 (Wide Format)
 var extractStats = function(image) {
   var stats = image.reduceRegions({
     collection: roiCollection,
@@ -78,49 +78,41 @@ var extractStats = function(image) {
     scale: 10
   });
   
-  // 将这个时刻的日期注入到每条记录中
-  return stats.map(function(feat) {
-    return feat.set('system:time_start', image.get('system:time_start'));
-  });
+  var statsList = stats.toList(10);
+  
+  var keys = statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_mean'); })
+      .cat(statsList.map(function(f) { return ee.String(ee.Feature(f).get('label')).cat('_std'); }));
+      
+  var values = statsList.map(function(f) { return ee.Feature(f).get('mean'); })
+      .cat(statsList.map(function(f) { return ee.Feature(f).get('stdDev'); }));
+      
+  var dict = ee.Dictionary.fromLists(keys, values);
+  dict = dict.set('system:time_start', image.get('system:time_start'));
+  
+  return ee.Feature(null, dict);
 };
 
-// 展开 FeatureCollection 的 FeatureCollection
-var timeSeriesData = ndviCollection.map(extractStats).flatten();
-
-// 整理成宽表格式供 CSV 导出
-var pivotData = timeSeriesData.map(function(feat) {
-  var dateStr = ee.Date(feat.get('system:time_start')).format('YYYY-MM-dd');
-  var label = feat.get('label');
-  var meanVal = feat.get('mean');
-  var stdVal = feat.get('stdDev');
-  
-  // 按照标签生成动态属性名 (例如: Sprawl_Zone_Core_mean, Sprawl_Zone_Core_std)
-  var props = { 'system:time_start': dateStr };
-  // GEE 语法：使用字典安全地给 Feature 赋值
-  var dict = ee.Dictionary(props)
-    .set(ee.String(label).cat('_mean'), meanVal)
-    .set(ee.String(label).cat('_std'), stdVal);
-    
-  return ee.Feature(null, dict);
-});
-
-// 使用分组合并同一个日期的不同区域数据
-// 提示：这在 GEE 中有点复杂，最简单的是让 Python 去做宽表透视，
-// 但为了保持原有 Python 代码尽量少改，我们这里直接输出长表，交由 Python pivot
+// 获得宽表 FeatureCollection，每张影像对应1行，包含所有区域的 mean 和 stdDev
+var timeSeriesData = ndviCollection.map(extractStats);
 
 var consolidatedChart = ui.Chart.feature.byFeature({
   features: timeSeriesData,
   xProperty: 'system:time_start',
-  yProperties: ['mean']
+  yProperties: [
+    'Sprawl_Zone_Core_mean', 'Sprawl_Zone_Core_std', 
+    'Control_Zone_mean', 'Control_Zone_std'
+  ]
 })
-.setSeriesNames(['NDVI_Mean'])
+.setChartType('ScatterChart')
 .setOptions({
-  title: 'NDVI Analytics Extraction Ready (with UQ StdDev)',
+  title: 'NDVI Analytics Extraction Ready (with UQ StdDev Wide-Format)',
   vAxis: {title: 'NDVI'},
+  pointSize: 2,
+  dataOpacity: 0.5
 });
 
 print("【ACTION REQUIRED】");
-print("1. We now export RAW LONG FORMAT telemetry including the Pixel Standard Deviation (stdDev) for Academic UQ.");
+print("1. We now explicitly export WIDE-FORMAT telemetry including Pixel StdDev.");
 print("2. Click the pop-out arrow in the top right of this chart -> Download CSV.");
 print("3. MUST Save as: data/raw_telemetry/ee-chart_ndvi.csv");
 print(consolidatedChart);
