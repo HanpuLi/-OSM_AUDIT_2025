@@ -139,8 +139,8 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     ax2.axvspan(CONSTRUCTION_DATE, df_valid.index.max(), alpha=0.04, color='#FF6666')
 
     # BACI 结果标注
-    sig_t = 'Significant' if t_p < 0.05 else 'Not Significant'
-    sig_u = 'Significant' if u_p < 0.05 else 'Not Significant'
+    sig_t = 'Significant' if t_p < 0.05 else ('Marginal' if t_p < 0.10 else 'Not Significant')
+    sig_u = 'Significant' if u_p < 0.05 else ('Marginal' if u_p < 0.10 else 'Not Significant')
     baci_label = (f"BACI Welch's t: p={t_p:.3e} ({sig_t})\n"
                   f"Mann-Whitney U: p={u_p:.3e} ({sig_u})")
     ax2.text(0.02, 0.06, baci_label, transform=ax2.transAxes, fontsize=10,
