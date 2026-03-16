@@ -54,8 +54,8 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     # ---------------------------------------------------------
     # 全年 BACI
     # ---------------------------------------------------------
-    pre = df_valid.loc[:CONSTRUCTION_DATE, 'delta']
-    post = df_valid.loc[CONSTRUCTION_DATE:, 'delta']
+    pre = df_valid.loc[df_valid.index < CONSTRUCTION_DATE, 'delta']
+    post = df_valid.loc[df_valid.index >= CONSTRUCTION_DATE, 'delta']
 
     t_stat, t_p = ttest_ind(pre, post, equal_var=False)
     u_stat, u_p = mannwhitneyu(pre, post, alternative='two-sided')
@@ -69,8 +69,8 @@ def render_thermodynamic_chart(csv_path, output_image_path):
     # 夏季 BACI (Jun-Aug)
     # ---------------------------------------------------------
     summer = df_valid[df_valid.index.month.isin([6, 7, 8])]
-    s_pre = summer.loc[:CONSTRUCTION_DATE, 'delta']
-    s_post = summer.loc[CONSTRUCTION_DATE:, 'delta']
+    s_pre = summer.loc[summer.index < CONSTRUCTION_DATE, 'delta']
+    s_post = summer.loc[summer.index >= CONSTRUCTION_DATE, 'delta']
 
     s_t_stat, s_t_p = ttest_ind(s_pre, s_post, equal_var=False)
     s_u_stat, s_u_p = mannwhitneyu(s_pre, s_post, alternative='two-sided')
